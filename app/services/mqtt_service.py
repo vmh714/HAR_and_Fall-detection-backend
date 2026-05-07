@@ -1,6 +1,8 @@
 import json
 import asyncio
+import ssl
 import aiomqtt
+from datetime import datetime
 from sqlalchemy import select, update
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
@@ -19,6 +21,12 @@ class MQTTService:
     async def run(self):
         """Main loop for MQTT client"""
         reconnect_interval = 5
+        
+        # Khởi tạo SSL Context nếu dùng mqtts hoặc wss
+        tls_context = None
+        if settings.MQTT_PROTOCOL in ["mqtts", "wss"]:
+            tls_context = ssl.create_default_context()
+
         while True:
             try:
                 async with aiomqtt.Client(
@@ -26,7 +34,7 @@ class MQTTService:
                     port=settings.MQTT_PORT,
                     username=settings.MQTT_USERNAME,
                     password=settings.MQTT_PASSWORD,
-                    tls_context=None if settings.MQTT_PROTOCOL in ["mqtt", "ws"] else True
+                    tls_context=tls_context
                 ) as client:
                     self.client = client
                     print(f"Connected to MQTT Broker at {settings.MQTT_HOST}")
@@ -69,13 +77,7 @@ class MQTTService:
 
     async def process_status(self, db, device_id, data):
         payload = StatusPayload(**data)
-        # Update device status in Postgres
-        stmt = update(Device).where(Device.device_id == device_id).values(
-            battery_pct=payload.battery_pct,
-            last_online=asyncio.get_event_loop().time() # This is wrong, use datetime
-        )
-        # Better: use datetime.utcnow()
-        from datetime import datetime
+        # Update device status in Postgres with current UTC time
         await db.execute(
             update(Device).where(Device.device_id == device_id).values(
                 battery_pct=payload.battery_pct,
