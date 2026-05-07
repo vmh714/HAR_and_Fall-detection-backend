@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: vitalsguard-backend
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: sh start.sh
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.2
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: INFLUXDB_URL
+        sync: false
+      - key: INFLUXDB_TOKEN
+        sync: false
+      - key: INFLUXDB_ORG
+        sync: false
+      - key: INFLUXDB_BUCKET
+        sync: false
+      - key: MQTT_BROKER
+        sync: false
+      - key: MQTT_PORT
+        value: "1883"
+      - key: MQTT_USER
+        sync: false
+      - key: MQTT_PASSWORD
+        sync: false
