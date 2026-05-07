@@ -3,6 +3,7 @@ import asyncio
 import ssl
 import aiomqtt
 from datetime import datetime
+from sqlalchemy.orm import selectinload
 from sqlalchemy import select, update
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
@@ -76,15 +77,42 @@ class MQTTService:
             print(f"Error processing MQTT message: {e}")
 
     async def process_status(self, db, device_id, data):
+        from app.db.influx_client import influx_manager, Point
         payload = StatusPayload(**data)
-        # Update device status in Postgres with current UTC time
-        await db.execute(
-            update(Device).where(Device.device_id == device_id).values(
-                battery_pct=payload.battery_pct,
-                last_online=datetime.utcnow()
-            )
+        
+        # 1. Update Postgres (Current status for Dashboard)
+        result = await db.execute(
+            select(Device).options(selectinload(Device.wearer)).where(Device.device_id == device_id)
         )
-        print(f"Updated status for device {device_id}")
+        device = result.scalar_one_or_none()
+        if not device:
+            return
+
+        device.battery_pct = payload.battery_pct
+        device.last_online = datetime.utcnow()
+
+        # 2. Calculate Distance if wearer exists
+        # Formula: Distance = (walk_steps * L_walk) + (run_steps * L_run)
+        # Assuming step length = 0.415 * height for walk, 0.5 * height for run (standard estimation)
+        distance_m = 0.0
+        if device.wearer:
+            height_m = device.wearer.height_cm / 100
+            l_walk = 0.415 * height_m
+            l_run = 0.5 * height_m
+            distance_m = (payload.walk_steps * l_walk) + (payload.run_steps * l_run)
+
+        # 3. Write to InfluxDB (Historical data for Charts)
+        point = (
+            Point("telemetry")
+            .tag("device_id", device_id)
+            .field("battery_pct", float(payload.battery_pct))
+            .field("walk_steps", int(payload.walk_steps))
+            .field("run_steps", int(payload.run_steps))
+            .field("distance_m", float(distance_m))
+        )
+        influx_manager.write_point(point)
+        
+        print(f"Updated status & InfluxDB for device {device_id} (Dist: {distance_m:.1f}m)")
 
     async def process_alert(self, db, device_id, data):
         payload = AlertPayload(**data)
