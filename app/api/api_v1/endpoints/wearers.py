@@ -5,7 +5,9 @@ from typing import List
 from uuid import UUID
 
 from app.api.deps import get_current_user
+from app.db.session import get_db
 from app.models.domain import Wearer, User
+from app.schemas.domain import WearerCreate, WearerUpdate, WearerResponse
 
 router = APIRouter()
 

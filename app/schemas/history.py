@@ -19,3 +19,9 @@ class AlertHistory(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+class StepHistoryResponse(BaseModel):
+    date: str
+    walk_steps: int
+    run_steps: int
+    distance_km: float

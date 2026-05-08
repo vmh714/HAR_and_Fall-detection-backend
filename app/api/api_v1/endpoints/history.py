@@ -3,7 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, union_all, literal_column, desc
 from app.db.session import get_db
 from app.models.domain import Alert, DeviceEvent
-from app.schemas.history import TimelineEntry, AlertHistory
+from app.schemas.history import TimelineEntry, AlertHistory, StepHistoryResponse
+from app.db.influx_client import influx_manager
+from app.core.config import settings
 from typing import List
 
 router = APIRouter()
@@ -73,3 +75,36 @@ async def get_device_timeline(
         )
         for row in result
     ]
+
+@router.get("/steps", response_model=List[StepHistoryResponse])
+async def get_steps_history(days: int = 7):
+    """Query daily step counts from InfluxDB"""
+    # Note: Using aggregateWindow with 'max' because device sends cumulative steps per day.
+    # We take the max value seen each day as the daily total.
+    query = f'''
+        from(bucket: "{settings.INFLUXDB_BUCKET}")
+          |> range(start: -{days}d)
+          |> filter(fn: (r) => r["_measurement"] == "telemetry")
+          |> filter(fn: (r) => r["_field"] == "walk_steps" or r["_field"] == "run_steps" or r["_field"] == "distance_m")
+          |> aggregateWindow(every: 1d, fn: max, createEmpty: false)
+          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+          |> sort(columns: ["_time"], desc: true)
+    '''
+    
+    results = []
+    try:
+        tables = influx_manager.query_api.query(query, org=settings.INFLUXDB_ORG)
+        for table in tables:
+            for record in table.records:
+                dt = record.get_time()
+                results.append(StepHistoryResponse(
+                    date=dt.strftime("%Y-%m-%d"),
+                    walk_steps=int(record.values.get("walk_steps") or 0),
+                    run_steps=int(record.values.get("run_steps") or 0),
+                    distance_km=round((record.values.get("distance_m") or 0) / 1000, 2)
+                ))
+    except Exception as e:
+        print(f"Error querying InfluxDB for steps: {e}")
+        return []
+        
+    return results

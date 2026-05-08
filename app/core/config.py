@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "info"
     SECRET_KEY: str = "your_super_secret_jwt_key_here"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+    API_V1_STR: str = "/api/v1"
 
     # PostgreSQL
     DATABASE_URL: str = Field(..., validation_alias="DATABASE_URL")
