@@ -7,7 +7,7 @@ from uuid import UUID
 
 from app.db.session import get_db
 from app.models.domain import Device, Wearer
-from app.schemas.domain import DeviceCreate, DeviceResponse, DeviceAssign
+from app.schemas.domain import DeviceCreate, DeviceResponse, DeviceAssign, DeviceUpdate
 
 router = APIRouter()
 
@@ -32,8 +32,44 @@ async def create_device(device_in: DeviceCreate, db: AsyncSession = Depends(get_
     db_device = Device(**device_in.model_dump())
     db.add(db_device)
     await db.commit()
-    await db.refresh(db_device)
-    return db_device
+    
+    # Re-fetch with selectinload to ensure relationship is loaded for the response
+    result = await db.execute(
+        select(Device).options(selectinload(Device.wearer)).where(Device.device_id == db_device.device_id)
+    )
+    return result.scalar_one()
+
+@router.put("/{device_id}", response_model=DeviceResponse)
+async def update_device(device_id: str, device_in: DeviceUpdate, db: AsyncSession = Depends(get_db)):
+    """Cập nhật thông tin thiết bị."""
+    result = await db.execute(select(Device).options(selectinload(Device.wearer)).where(Device.device_id == device_id))
+    db_device = result.scalar_one_or_none()
+    if not db_device:
+        raise HTTPException(status_code=404, detail="Device not found")
+        
+    update_data = device_in.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_device, key, value)
+        
+    await db.commit()
+    
+    # Re-fetch with selectinload
+    result = await db.execute(
+        select(Device).options(selectinload(Device.wearer)).where(Device.device_id == device_id)
+    )
+    return result.scalar_one()
+
+@router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_device(device_id: str, db: AsyncSession = Depends(get_db)):
+    """Xóa hoàn toàn thiết bị khỏi Database."""
+    result = await db.execute(select(Device).where(Device.device_id == device_id))
+    db_device = result.scalar_one_or_none()
+    if not db_device:
+        raise HTTPException(status_code=404, detail="Device not found")
+        
+    await db.delete(db_device)
+    await db.commit()
+    return None
 
 @router.post("/{device_id}/assign", response_model=DeviceResponse)
 async def assign_device(device_id: str, assign_in: DeviceAssign, db: AsyncSession = Depends(get_db)):
@@ -53,8 +89,12 @@ async def assign_device(device_id: str, assign_in: DeviceAssign, db: AsyncSessio
     # 3. Gán thiết bị
     device.current_wearer_id = wearer.id
     await db.commit()
-    await db.refresh(device)
-    return device
+    
+    # Re-fetch with selectinload
+    result = await db.execute(
+        select(Device).options(selectinload(Device.wearer)).where(Device.device_id == device_id)
+    )
+    return result.scalar_one()
 
 @router.post("/{device_id}/unassign", response_model=DeviceResponse)
 async def unassign_device(device_id: str, db: AsyncSession = Depends(get_db)):
@@ -66,5 +106,9 @@ async def unassign_device(device_id: str, db: AsyncSession = Depends(get_db)):
         
     device.current_wearer_id = None
     await db.commit()
-    await db.refresh(device)
-    return device
+    
+    # Re-fetch with selectinload
+    result = await db.execute(
+        select(Device).options(selectinload(Device.wearer)).where(Device.device_id == device_id)
+    )
+    return result.scalar_one()

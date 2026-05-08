@@ -2,6 +2,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 from contextlib import asynccontextmanager
+from app.patch_loop import patch_asyncio_loop
+
+# Apply Windows loop patch early
+patch_asyncio_loop()
+
 from app.services.mqtt_service import mqtt_service
 
 @asynccontextmanager
