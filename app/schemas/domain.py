@@ -39,6 +39,10 @@ class DeviceCreate(DeviceBase):
 class DeviceAssign(BaseModel):
     wearer_id: UUID = Field(..., description="ID của người bệnh cần gán")
 
+class DeviceUpdate(BaseModel):
+    firmware_version: Optional[str] = Field(None, max_length=50)
+    is_active: Optional[bool] = Field(None)
+
 class DeviceResponse(DeviceBase):
     current_wearer_id: Optional[UUID]
     created_at: datetime
