@@ -11,7 +11,7 @@ class WearerBase(BaseModel):
     height_cm: float = Field(..., gt=0, description="Chiều cao (cm) để tính toán quãng đường")
 
 class WearerCreate(WearerBase):
-    org_id: UUID = Field(..., description="ID của Viện dưỡng lão/Tổ chức")
+    org_id: Optional[UUID] = Field(None, description="ID của Tổ chức (Nếu để trống sẽ lấy theo User)")
 
 class WearerUpdate(BaseModel):
     full_name: Optional[str] = Field(None, max_length=100)
@@ -34,7 +34,7 @@ class DeviceBase(BaseModel):
     is_active: bool = Field(True)
 
 class DeviceCreate(DeviceBase):
-    org_id: UUID = Field(..., description="ID của Viện dưỡng lão/Tổ chức")
+    org_id: Optional[UUID] = Field(None, description="ID của Tổ chức (Nếu để trống sẽ lấy theo User)")
 
 class DeviceAssign(BaseModel):
     wearer_id: UUID = Field(..., description="ID của người bệnh cần gán")

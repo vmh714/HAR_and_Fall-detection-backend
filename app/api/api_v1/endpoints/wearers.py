@@ -4,24 +4,40 @@ from sqlalchemy import select
 from typing import List
 from uuid import UUID
 
-from app.db.session import get_db
-from app.models.domain import Wearer
-from app.schemas.domain import WearerCreate, WearerUpdate, WearerResponse
+from app.api.deps import get_current_user
+from app.models.domain import Wearer, User
 
 router = APIRouter()
 
 @router.get("/", response_model=List[WearerResponse])
-async def read_wearers(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):
-    """Lấy danh sách người bệnh."""
-    result = await db.execute(select(Wearer).offset(skip).limit(limit))
+async def read_wearers(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    skip: int = 0, 
+    limit: int = 100
+):
+    """Lấy danh sách người bệnh của tổ chức."""
+    result = await db.execute(
+        select(Wearer)
+        .where(Wearer.org_id == current_user.org_id)
+        .offset(skip)
+        .limit(limit)
+    )
     wearers = result.scalars().all()
     return wearers
 
 @router.post("/", response_model=WearerResponse, status_code=status.HTTP_201_CREATED)
-async def create_wearer(wearer_in: WearerCreate, db: AsyncSession = Depends(get_db)):
-    """Thêm mới người bệnh."""
-    # Note: In a real app, verify org_id exists and user has permission
-    db_wearer = Wearer(**wearer_in.model_dump())
+async def create_wearer(
+    wearer_in: WearerCreate, 
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Thêm mới người bệnh vào tổ chức hiện tại."""
+    wearer_data = wearer_in.model_dump()
+    if not wearer_data.get("org_id"):
+        wearer_data["org_id"] = current_user.org_id
+        
+    db_wearer = Wearer(**wearer_data)
     db.add(db_wearer)
     await db.commit()
     await db.refresh(db_wearer)

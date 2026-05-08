@@ -6,34 +6,51 @@ from typing import List
 from uuid import UUID
 
 from app.db.session import get_db
-from app.models.domain import Device, Wearer
+from app.api.deps import get_current_user
+from app.models.domain import Device, Wearer, User
 from app.schemas.domain import DeviceCreate, DeviceResponse, DeviceAssign, DeviceUpdate
 
 router = APIRouter()
 
 @router.get("/", response_model=List[DeviceResponse])
-async def read_devices(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):
-    """Lấy danh sách thiết bị kèm thông tin người đeo (nếu có)."""
-    # Use selectinload to fetch the related wearer efficiently
+async def read_devices(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    skip: int = 0, 
+    limit: int = 100
+):
+    """Lấy danh sách thiết bị của tổ chức kèm thông tin người đeo."""
     result = await db.execute(
-        select(Device).options(selectinload(Device.wearer)).offset(skip).limit(limit)
+        select(Device)
+        .options(selectinload(Device.wearer))
+        .where(Device.org_id == current_user.org_id)
+        .offset(skip)
+        .limit(limit)
     )
     devices = result.scalars().all()
     return devices
 
 @router.post("/", response_model=DeviceResponse, status_code=status.HTTP_201_CREATED)
-async def create_device(device_in: DeviceCreate, db: AsyncSession = Depends(get_db)):
-    """Đăng ký thiết bị phần cứng mới."""
+async def create_device(
+    device_in: DeviceCreate, 
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Đăng ký thiết bị phần cứng mới cho tổ chức hiện tại."""
     # Check if device already exists
     result = await db.execute(select(Device).where(Device.device_id == device_in.device_id))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Device already registered")
         
-    db_device = Device(**device_in.model_dump())
+    device_data = device_in.model_dump()
+    if not device_data.get("org_id"):
+        device_data["org_id"] = current_user.org_id
+
+    db_device = Device(**device_data)
     db.add(db_device)
     await db.commit()
     
-    # Re-fetch with selectinload to ensure relationship is loaded for the response
+    # Re-fetch with selectinload
     result = await db.execute(
         select(Device).options(selectinload(Device.wearer)).where(Device.device_id == db_device.device_id)
     )
