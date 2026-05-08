@@ -34,7 +34,7 @@ class DeviceBase(BaseModel):
     is_active: bool = Field(True)
 
 class DeviceCreate(DeviceBase):
-    pass
+    org_id: UUID = Field(..., description="ID của Viện dưỡng lão/Tổ chức")
 
 class DeviceAssign(BaseModel):
     wearer_id: UUID = Field(..., description="ID của người bệnh cần gán")
@@ -45,6 +45,7 @@ class DeviceUpdate(BaseModel):
 
 class DeviceResponse(DeviceBase):
     current_wearer_id: Optional[UUID]
+    org_id: UUID
     created_at: datetime
     updated_at: datetime
     
