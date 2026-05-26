@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, union_all, literal_column, desc
 from app.db.session import get_db
@@ -12,7 +13,8 @@ router = APIRouter()
 
 @router.get("/alerts", response_model=List[AlertHistory])
 async def get_alert_history(
-    device_id: str = None, 
+    device_id: str = None,
+    limit: int = 20,
     db: AsyncSession = Depends(get_db)
 ):
     """Query fall history from PostgreSQL"""
@@ -20,9 +22,45 @@ async def get_alert_history(
     if device_id:
         query = query.where(Alert.device_id == device_id)
     
-    query = query.order_by(desc(Alert.created_at))
+    query = query.order_by(desc(Alert.created_at)).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
+
+@router.patch("/alerts/{alert_id}/resolve", response_model=AlertHistory)
+async def resolve_alert(
+    alert_id: str,
+    device_id: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Mark a fall alert as resolved"""
+    alert = None
+
+    # 1. Try to find by UUID first if alert_id is a valid UUID
+    try:
+        uuid_id = UUID(alert_id)
+        result = await db.execute(select(Alert).where(Alert.id == uuid_id))
+        alert = result.scalar_one_or_none()
+    except ValueError:
+        pass
+
+    # 2. Fallback: Find the latest unresolved alert (optionally filtered by device_id)
+    if not alert:
+        query = select(Alert).where(Alert.is_resolved == False)
+        if device_id:
+            query = query.where(Alert.device_id == device_id)
+        query = query.order_by(desc(Alert.created_at)).limit(1)
+
+        result = await db.execute(query)
+        alert = result.scalar_one_or_none()
+
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    alert.is_resolved = True
+    await db.commit()
+    await db.refresh(alert)
+
+    return alert
 
 @router.get("/{device_id}/timeline", response_model=List[TimelineEntry])
 async def get_device_timeline(

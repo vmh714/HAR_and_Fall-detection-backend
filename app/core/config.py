@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     MQTT_PORT: int = 8883
     MQTT_WS_PATH: str = "/mqtt"
 
+    # Device Status
+    DEVICE_ONLINE_TIMEOUT_SECONDS: int = 60
+
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"),
         env_file_encoding='utf-8',

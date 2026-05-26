@@ -2,7 +2,7 @@ import json
 import asyncio
 import ssl
 import aiomqtt
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select, update
 from app.core.config import settings
@@ -89,7 +89,7 @@ class MQTTService:
             return
 
         device.battery_pct = payload.battery_pct
-        device.last_online = datetime.utcnow()
+        device.last_online = datetime.fromtimestamp(payload.timestamp, timezone.utc) if payload.timestamp else datetime.now(timezone.utc)
 
         # 2. Calculate Distance if wearer exists
         # Formula: Distance = (walk_steps * L_walk) + (run_steps * L_run)
@@ -110,6 +110,8 @@ class MQTTService:
             .field("run_steps", int(payload.run_steps))
             .field("distance_m", float(distance_m))
         )
+        if payload.timestamp:
+            point.time(datetime.fromtimestamp(payload.timestamp, timezone.utc))
         influx_manager.write_point(point)
         
         print(f"Updated status & InfluxDB for device {device_id} (Dist: {distance_m:.1f}m)")
@@ -127,7 +129,8 @@ class MQTTService:
             wearer_id=wearer_id,
             alert_type="FALL_DETECTED",
             confidence=payload.confidence,
-            is_resolved=False
+            is_resolved=False,
+            created_at=datetime.fromtimestamp(payload.timestamp, timezone.utc) if payload.timestamp else datetime.now(timezone.utc)
         )
         db.add(new_alert)
         print(f"Recorded Fall Alert for device {device_id}")
@@ -144,7 +147,8 @@ class MQTTService:
             device_id=device_id,
             wearer_id=wearer_id,
             event_type=payload.event_type,
-            description=payload.description
+            description=payload.description,
+            created_at=datetime.fromtimestamp(payload.timestamp, timezone.utc) if payload.timestamp else datetime.now(timezone.utc)
         )
         db.add(new_event)
         print(f"Recorded Event {payload.event_type} for device {device_id}")

@@ -1,7 +1,7 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, computed_field
 from typing import Optional, List
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
 # ==========================================
 # WEARER SCHEMAS
@@ -48,8 +48,24 @@ class DeviceResponse(DeviceBase):
     org_id: UUID
     created_at: datetime
     updated_at: datetime
+    battery_pct: Optional[int] = None
+    last_online: Optional[datetime] = None
     
     # Nested response for wearer details (optional)
     wearer: Optional[WearerResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    def is_online(self) -> bool:
+        if not self.last_online:
+            return False
+        from app.core.config import settings
+        now = datetime.now(timezone.utc)
+        
+        last_online_aware = self.last_online
+        if last_online_aware.tzinfo is None:
+            last_online_aware = last_online_aware.replace(tzinfo=timezone.utc)
+            
+        diff_seconds = (now - last_online_aware).total_seconds()
+        return diff_seconds < settings.DEVICE_ONLINE_TIMEOUT_SECONDS
