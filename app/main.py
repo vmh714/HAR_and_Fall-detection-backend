@@ -8,6 +8,7 @@ from app.patch_loop import patch_asyncio_loop
 patch_asyncio_loop()
 
 from app.services.mqtt_service import mqtt_service
+from app.core.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,7 +41,7 @@ app.add_middleware(
 
 from app.api.api_v1.api import api_router
 
-app.include_router(api_router, prefix="/api/v1")
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 async def root():

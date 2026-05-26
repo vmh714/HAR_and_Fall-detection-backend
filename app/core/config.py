@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "info"
     SECRET_KEY: str = "your_super_secret_jwt_key_here"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+    API_V1_STR: str = "/api/v1"
 
     # PostgreSQL
     DATABASE_URL: str = Field(..., validation_alias="DATABASE_URL")
@@ -25,6 +26,9 @@ class Settings(BaseSettings):
     MQTT_HOST: str = "localhost"
     MQTT_PORT: int = 8883
     MQTT_WS_PATH: str = "/mqtt"
+
+    # Device Status
+    DEVICE_ONLINE_TIMEOUT_SECONDS: int = 60
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"),

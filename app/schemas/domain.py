@@ -1,7 +1,7 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, computed_field
 from typing import Optional, List
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
 # ==========================================
 # WEARER SCHEMAS
@@ -11,7 +11,7 @@ class WearerBase(BaseModel):
     height_cm: float = Field(..., gt=0, description="Chiều cao (cm) để tính toán quãng đường")
 
 class WearerCreate(WearerBase):
-    org_id: UUID = Field(..., description="ID của Viện dưỡng lão/Tổ chức")
+    org_id: Optional[UUID] = Field(None, description="ID của Tổ chức (Nếu để trống sẽ lấy theo User)")
 
 class WearerUpdate(BaseModel):
     full_name: Optional[str] = Field(None, max_length=100)
@@ -34,7 +34,7 @@ class DeviceBase(BaseModel):
     is_active: bool = Field(True)
 
 class DeviceCreate(DeviceBase):
-    pass
+    org_id: Optional[UUID] = Field(None, description="ID của Tổ chức (Nếu để trống sẽ lấy theo User)")
 
 class DeviceAssign(BaseModel):
     wearer_id: UUID = Field(..., description="ID của người bệnh cần gán")
@@ -45,10 +45,27 @@ class DeviceUpdate(BaseModel):
 
 class DeviceResponse(DeviceBase):
     current_wearer_id: Optional[UUID]
+    org_id: UUID
     created_at: datetime
     updated_at: datetime
+    battery_pct: Optional[int] = None
+    last_online: Optional[datetime] = None
     
     # Nested response for wearer details (optional)
     wearer: Optional[WearerResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    def is_online(self) -> bool:
+        if not self.last_online:
+            return False
+        from app.core.config import settings
+        now = datetime.now(timezone.utc)
+        
+        last_online_aware = self.last_online
+        if last_online_aware.tzinfo is None:
+            last_online_aware = last_online_aware.replace(tzinfo=timezone.utc)
+            
+        diff_seconds = (now - last_online_aware).total_seconds()
+        return diff_seconds < settings.DEVICE_ONLINE_TIMEOUT_SECONDS
