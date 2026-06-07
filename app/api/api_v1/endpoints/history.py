@@ -3,7 +3,8 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, union_all, literal_column, desc
 from app.db.session import get_db
-from app.models.domain import Alert, DeviceEvent
+from app.models.domain import Alert, DeviceEvent, Device, User
+from app.api.deps import get_current_user
 from app.schemas.history import TimelineEntry, AlertHistory, StepHistoryResponse
 from app.db.influx_client import influx_manager
 from app.core.config import settings
@@ -15,13 +16,19 @@ router = APIRouter()
 async def get_alert_history(
     device_id: str = None,
     limit: int = 20,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Query fall history from PostgreSQL"""
-    query = select(Alert)
+    org_devices = await db.execute(
+        select(Device.device_id).where(Device.org_id == current_user.org_id)
+    )
+    org_device_ids = [r[0] for r in org_devices.all()]
+
+    query = select(Alert).where(Alert.device_id.in_(org_device_ids))
     if device_id:
         query = query.where(Alert.device_id == device_id)
-    
+
     query = query.order_by(desc(Alert.created_at)).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
@@ -30,22 +37,33 @@ async def get_alert_history(
 async def resolve_alert(
     alert_id: str,
     device_id: str = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Mark a fall alert as resolved"""
+    org_devices = await db.execute(
+        select(Device.device_id).where(Device.org_id == current_user.org_id)
+    )
+    org_device_ids = [r[0] for r in org_devices.all()]
+
     alert = None
 
     # 1. Try to find by UUID first if alert_id is a valid UUID
     try:
         uuid_id = UUID(alert_id)
-        result = await db.execute(select(Alert).where(Alert.id == uuid_id))
+        result = await db.execute(
+            select(Alert).where(Alert.id == uuid_id, Alert.device_id.in_(org_device_ids))
+        )
         alert = result.scalar_one_or_none()
     except ValueError:
         pass
 
     # 2. Fallback: Find the latest unresolved alert (optionally filtered by device_id)
     if not alert:
-        query = select(Alert).where(Alert.is_resolved == False)
+        query = select(Alert).where(
+            Alert.is_resolved == False,
+            Alert.device_id.in_(org_device_ids)
+        )
         if device_id:
             query = query.where(Alert.device_id == device_id)
         query = query.order_by(desc(Alert.created_at)).limit(1)
@@ -64,13 +82,24 @@ async def resolve_alert(
 
 @router.get("/{device_id}/timeline", response_model=List[TimelineEntry])
 async def get_device_timeline(
-    device_id: str, 
-    limit: int = 20, 
-    db: AsyncSession = Depends(get_db)
+    device_id: str,
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get activity timeline by merging Alerts and DeviceEvents.
     """
+    # Verify device belongs to current user's org
+    device_check = await db.execute(
+        select(Device).where(
+            Device.device_id == device_id,
+            Device.org_id == current_user.org_id
+        )
+    )
+    if not device_check.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Device not found")
+
     # Create subqueries for UNION ALL
     alerts_query = select(
         Alert.id,
@@ -115,20 +144,36 @@ async def get_device_timeline(
     ]
 
 @router.get("/steps", response_model=List[StepHistoryResponse])
-async def get_steps_history(days: int = 7):
-    """Query daily step counts from InfluxDB"""
+async def get_steps_history(
+    days: int = 7,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Query daily step counts from InfluxDB, scoped to current user's org"""
+    # Fetch device IDs belonging to this org to scope the InfluxDB query
+    org_devices = await db.execute(
+        select(Device.device_id).where(Device.org_id == current_user.org_id)
+    )
+    org_device_ids = [r[0] for r in org_devices.all()]
+
+    if not org_device_ids:
+        return []
+
+    device_set = "[" + ", ".join([f'"{d}"' for d in org_device_ids]) + "]"
+
     # Note: Using aggregateWindow with 'max' because device sends cumulative steps per day.
     # We take the max value seen each day as the daily total.
     query = f'''
         from(bucket: "{settings.INFLUXDB_BUCKET}")
           |> range(start: -{days}d)
           |> filter(fn: (r) => r["_measurement"] == "telemetry")
+          |> filter(fn: (r) => contains(value: r["device_id"], set: {device_set}))
           |> filter(fn: (r) => r["_field"] == "walk_steps" or r["_field"] == "run_steps" or r["_field"] == "distance_m")
           |> aggregateWindow(every: 1d, fn: max, createEmpty: false)
           |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
           |> sort(columns: ["_time"], desc: true)
     '''
-    
+
     results = []
     try:
         tables = influx_manager.query_api.query(query, org=settings.INFLUXDB_ORG)
@@ -144,5 +189,5 @@ async def get_steps_history(days: int = 7):
     except Exception as e:
         print(f"Error querying InfluxDB for steps: {e}")
         return []
-        
+
     return results
