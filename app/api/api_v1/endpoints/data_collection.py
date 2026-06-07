@@ -18,6 +18,7 @@ async def save_data_collection_session(session: DataCollectionSessionCreate):
         point = Point("imu_raw") \
             .tag("device_id", session.device_id) \
             .tag("label", session.label) \
+            .tag("session_id", str(session.start_timestamp)) \
             .field("ax", sample.ax) \
             .field("ay", sample.ay) \
             .field("az", sample.az) \
