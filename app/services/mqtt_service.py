@@ -110,6 +110,8 @@ class MQTTService:
             .field("run_steps", int(payload.run_steps))
             .field("distance_m", float(distance_m))
         )
+        if device.wearer and device.current_wearer_id:
+            point = point.tag("wearer_id", str(device.current_wearer_id))
         if payload.timestamp:
             point.time(datetime.fromtimestamp(payload.timestamp, timezone.utc))
         influx_manager.write_point(point)

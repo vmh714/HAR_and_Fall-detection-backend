@@ -43,8 +43,8 @@ async def create_device(
         raise HTTPException(status_code=400, detail="Device already registered")
         
     device_data = device_in.model_dump()
-    if not device_data.get("org_id"):
-        device_data["org_id"] = current_user.org_id
+    # Luôn ép org_id theo user hiện tại — KHÔNG cho client tự chỉ định org khác.
+    device_data["org_id"] = current_user.org_id
 
     db_device = Device(**device_data)
     db.add(db_device)
@@ -57,13 +57,21 @@ async def create_device(
     return result.scalar_one()
 
 @router.put("/{device_id}", response_model=DeviceResponse)
-async def update_device(device_id: str, device_in: DeviceUpdate, db: AsyncSession = Depends(get_db)):
-    """Cập nhật thông tin thiết bị."""
-    result = await db.execute(select(Device).options(selectinload(Device.wearer)).where(Device.device_id == device_id))
+async def update_device(
+    device_id: str,
+    device_in: DeviceUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Cập nhật thông tin thiết bị (chỉ trong tổ chức của user)."""
+    result = await db.execute(
+        select(Device).options(selectinload(Device.wearer))
+        .where(Device.device_id == device_id, Device.org_id == current_user.org_id)
+    )
     db_device = result.scalar_one_or_none()
     if not db_device:
         raise HTTPException(status_code=404, detail="Device not found")
-        
+
     update_data = device_in.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_device, key, value)
@@ -77,9 +85,15 @@ async def update_device(device_id: str, device_in: DeviceUpdate, db: AsyncSessio
     return result.scalar_one()
 
 @router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_device(device_id: str, db: AsyncSession = Depends(get_db)):
-    """Xóa hoàn toàn thiết bị khỏi Database."""
-    result = await db.execute(select(Device).where(Device.device_id == device_id))
+async def delete_device(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Xóa hoàn toàn thiết bị khỏi Database (chỉ trong tổ chức của user)."""
+    result = await db.execute(
+        select(Device).where(Device.device_id == device_id, Device.org_id == current_user.org_id)
+    )
     db_device = result.scalar_one_or_none()
     if not db_device:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -89,16 +103,26 @@ async def delete_device(device_id: str, db: AsyncSession = Depends(get_db)):
     return None
 
 @router.post("/{device_id}/assign", response_model=DeviceResponse)
-async def assign_device(device_id: str, assign_in: DeviceAssign, db: AsyncSession = Depends(get_db)):
-    """Gán thiết bị cho một bệnh nhân."""
-    # 1. Lấy thiết bị
-    result = await db.execute(select(Device).options(selectinload(Device.wearer)).where(Device.device_id == device_id))
+async def assign_device(
+    device_id: str,
+    assign_in: DeviceAssign,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Gán thiết bị cho một bệnh nhân (cả hai phải thuộc tổ chức của user)."""
+    # 1. Lấy thiết bị (trong org)
+    result = await db.execute(
+        select(Device).options(selectinload(Device.wearer))
+        .where(Device.device_id == device_id, Device.org_id == current_user.org_id)
+    )
     device = result.scalar_one_or_none()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-        
-    # 2. Kiểm tra bệnh nhân có tồn tại không
-    wearer_result = await db.execute(select(Wearer).where(Wearer.id == assign_in.wearer_id))
+
+    # 2. Kiểm tra bệnh nhân tồn tại VÀ cùng org (chống gán chéo tổ chức)
+    wearer_result = await db.execute(
+        select(Wearer).where(Wearer.id == assign_in.wearer_id, Wearer.org_id == current_user.org_id)
+    )
     wearer = wearer_result.scalar_one_or_none()
     if not wearer:
         raise HTTPException(status_code=404, detail="Wearer not found")
@@ -114,9 +138,16 @@ async def assign_device(device_id: str, assign_in: DeviceAssign, db: AsyncSessio
     return result.scalar_one()
 
 @router.post("/{device_id}/unassign", response_model=DeviceResponse)
-async def unassign_device(device_id: str, db: AsyncSession = Depends(get_db)):
-    """Gỡ thiết bị khỏi bệnh nhân hiện tại."""
-    result = await db.execute(select(Device).options(selectinload(Device.wearer)).where(Device.device_id == device_id))
+async def unassign_device(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Gỡ thiết bị khỏi bệnh nhân hiện tại (chỉ trong tổ chức của user)."""
+    result = await db.execute(
+        select(Device).options(selectinload(Device.wearer))
+        .where(Device.device_id == device_id, Device.org_id == current_user.org_id)
+    )
     device = result.scalar_one_or_none()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")

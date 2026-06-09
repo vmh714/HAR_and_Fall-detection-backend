@@ -36,9 +36,9 @@ async def create_wearer(
 ):
     """Thêm mới người bệnh vào tổ chức hiện tại."""
     wearer_data = wearer_in.model_dump()
-    if not wearer_data.get("org_id"):
-        wearer_data["org_id"] = current_user.org_id
-        
+    # Luôn ép org_id theo user hiện tại — KHÔNG cho client tự chỉ định org khác.
+    wearer_data["org_id"] = current_user.org_id
+
     db_wearer = Wearer(**wearer_data)
     db.add(db_wearer)
     await db.commit()
@@ -46,22 +46,35 @@ async def create_wearer(
     return db_wearer
 
 @router.get("/{wearer_id}", response_model=WearerResponse)
-async def read_wearer(wearer_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Lấy thông tin chi tiết một người bệnh."""
-    result = await db.execute(select(Wearer).where(Wearer.id == wearer_id))
+async def read_wearer(
+    wearer_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lấy thông tin chi tiết một người bệnh (chỉ trong tổ chức của user)."""
+    result = await db.execute(
+        select(Wearer).where(Wearer.id == wearer_id, Wearer.org_id == current_user.org_id)
+    )
     wearer = result.scalar_one_or_none()
     if not wearer:
         raise HTTPException(status_code=404, detail="Wearer not found")
     return wearer
 
 @router.put("/{wearer_id}", response_model=WearerResponse)
-async def update_wearer(wearer_id: UUID, wearer_in: WearerUpdate, db: AsyncSession = Depends(get_db)):
-    """Cập nhật thông tin người bệnh."""
-    result = await db.execute(select(Wearer).where(Wearer.id == wearer_id))
+async def update_wearer(
+    wearer_id: UUID,
+    wearer_in: WearerUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Cập nhật thông tin người bệnh (chỉ trong tổ chức của user)."""
+    result = await db.execute(
+        select(Wearer).where(Wearer.id == wearer_id, Wearer.org_id == current_user.org_id)
+    )
     wearer = result.scalar_one_or_none()
     if not wearer:
         raise HTTPException(status_code=404, detail="Wearer not found")
-    
+
     update_data = wearer_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(wearer, field, value)
@@ -71,9 +84,15 @@ async def update_wearer(wearer_id: UUID, wearer_in: WearerUpdate, db: AsyncSessi
     return wearer
 
 @router.delete("/{wearer_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_wearer(wearer_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Xóa hồ sơ người bệnh."""
-    result = await db.execute(select(Wearer).where(Wearer.id == wearer_id))
+async def delete_wearer(
+    wearer_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Xóa hồ sơ người bệnh (chỉ trong tổ chức của user)."""
+    result = await db.execute(
+        select(Wearer).where(Wearer.id == wearer_id, Wearer.org_id == current_user.org_id)
+    )
     wearer = result.scalar_one_or_none()
     if not wearer:
         raise HTTPException(status_code=404, detail="Wearer not found")
