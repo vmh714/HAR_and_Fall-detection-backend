@@ -26,7 +26,7 @@ har_env/
 .venv/
 venv/
 ENV/
-
+/*.py
 # Environment variables
 .env
 .env.*

@@ -64,6 +64,8 @@ class MQTTService:
             device_id = parts[1]
             topic_type = "/".join(parts[2:])
 
+            data["device_id"] = device_id
+
             async with AsyncSessionLocal() as db:
                 if topic_type == "status":
                     await self.process_status(db, device_id, data)
