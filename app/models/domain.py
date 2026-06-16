@@ -41,6 +41,7 @@ class Device(Base):
     firmware_version: Mapped[Optional[str]] = mapped_column(String(50))
     current_wearer_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("wearers.id"), unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    telemetry_interval: Mapped[int] = mapped_column(Integer, default=5)
     org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     battery_pct: Mapped[Optional[int]] = mapped_column(Integer, default=100)
     last_online: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(timezone=True))

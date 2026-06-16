@@ -9,6 +9,8 @@ from app.db.session import get_db
 from app.api.deps import get_current_user
 from app.models.domain import Device, Wearer, User
 from app.schemas.domain import DeviceCreate, DeviceResponse, DeviceAssign, DeviceUpdate
+from app.services.mqtt_service import mqtt_service
+import json
 
 router = APIRouter()
 
@@ -56,6 +58,24 @@ async def create_device(
     )
     return result.scalar_one()
 
+@router.get("/{device_id}", response_model=DeviceResponse)
+async def read_device(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lấy thông tin chi tiết một thiết bị."""
+    result = await db.execute(
+        select(Device)
+        .options(selectinload(Device.wearer))
+        .where(Device.device_id == device_id, Device.org_id == current_user.org_id)
+    )
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return device
+
+
 @router.put("/{device_id}", response_model=DeviceResponse)
 async def update_device(
     device_id: str,
@@ -77,6 +97,14 @@ async def update_device(
         setattr(db_device, key, value)
         
     await db.commit()
+    
+    # Publish MQTT command if telemetry_interval was updated
+    if "telemetry_interval" in update_data and mqtt_service.client:
+        payload = json.dumps({"action": "set_interval", "val": update_data["telemetry_interval"]})
+        try:
+            await mqtt_service.client.publish(f"eldercare/{device_id}/command", payload=payload, qos=1, retain=True)
+        except Exception as e:
+            print(f"Failed to publish MQTT command: {e}")
     
     # Re-fetch with selectinload
     result = await db.execute(

@@ -92,24 +92,27 @@ class MQTTService:
 
         device.battery_pct = payload.battery_pct
         device.last_online = datetime.fromtimestamp(payload.timestamp, timezone.utc) if payload.timestamp else datetime.now(timezone.utc)
+        if payload.interval is not None and device.telemetry_interval != payload.interval:
+            device.telemetry_interval = payload.interval
 
         # 2. Calculate Distance if wearer exists
-        # Formula: Distance = (walk_steps * L_walk) + (run_steps * L_run)
-        # Assuming step length = 0.415 * height for walk, 0.5 * height for run (standard estimation)
+        # Formula: Distance = steps * L_walk
+        # Assuming step length = 0.415 * height (standard estimation)
         distance_m = 0.0
         if device.wearer:
             height_m = device.wearer.height_cm / 100
             l_walk = 0.415 * height_m
-            l_run = 0.5 * height_m
-            distance_m = (payload.walk_steps * l_walk) + (payload.run_steps * l_run)
+            distance_m = payload.steps * l_walk
 
         # 3. Write to InfluxDB (Historical data for Charts)
         point = (
             Point("telemetry")
             .tag("device_id", device_id)
+            .tag("state", payload.state)
+            .tag("ai_pred", payload.ai_pred)
             .field("battery_pct", float(payload.battery_pct))
-            .field("walk_steps", int(payload.walk_steps))
-            .field("run_steps", int(payload.run_steps))
+            .field("steps", int(payload.steps))
+            .field("ai_conf", float(payload.ai_conf))
             .field("distance_m", float(distance_m))
         )
         if device.wearer and device.current_wearer_id:

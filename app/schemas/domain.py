@@ -32,6 +32,7 @@ class DeviceBase(BaseModel):
     device_id: str = Field(..., max_length=100, description="MAC Address hoặc MQTT Client ID")
     firmware_version: Optional[str] = Field(None, max_length=50)
     is_active: bool = Field(True)
+    telemetry_interval: int = Field(5, description="Chu kỳ gửi dữ liệu (giây)")
 
 class DeviceCreate(DeviceBase):
     org_id: Optional[UUID] = Field(None, description="ID của Tổ chức (Nếu để trống sẽ lấy theo User)")
@@ -42,6 +43,7 @@ class DeviceAssign(BaseModel):
 class DeviceUpdate(BaseModel):
     firmware_version: Optional[str] = Field(None, max_length=50)
     is_active: Optional[bool] = Field(None)
+    telemetry_interval: Optional[int] = Field(None, description="Chu kỳ gửi dữ liệu (giây)")
 
 class DeviceResponse(DeviceBase):
     current_wearer_id: Optional[UUID]

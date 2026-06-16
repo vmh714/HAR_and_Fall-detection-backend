@@ -22,6 +22,15 @@ class AlertHistory(BaseModel):
 
 class StepHistoryResponse(BaseModel):
     date: str
-    walk_steps: int
-    run_steps: int
+    steps: int
     distance_km: float
+
+class TelemetryHistoryResponse(BaseModel):
+    timestamp: datetime
+    battery_pct: Optional[float] = None
+    steps: Optional[int] = None
+    distance_m: Optional[float] = None
+    state: Optional[str] = None
+    ai_pred: Optional[str] = None
+    ai_conf: Optional[float] = None
+    rssi: Optional[int] = None

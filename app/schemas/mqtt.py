@@ -9,11 +9,13 @@ class MQTTBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 class StatusPayload(MQTTBase):
-    status: str = "online"
+    state: str = "NORMAL"
     battery_pct: int = Field(alias="battery")
     rssi: Optional[int] = None
-    walk_steps: int = Field(default=0, alias="steps")
-    run_steps: int = 0
+    steps: int = 0
+    ai_pred: str = "UNKNOWN"
+    ai_conf: float = 0.0
+    interval: Optional[int] = None
 
 class AlertPayload(MQTTBase):
     user_name: str

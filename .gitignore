@@ -54,3 +54,6 @@ logs/
 .DS_Store
 Thumbs.db
 .agents
+
+# Local startup scripts
+start.ps1

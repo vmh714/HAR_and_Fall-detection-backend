@@ -146,11 +146,11 @@ async def get_device_timeline(
 @router.get("/steps", response_model=List[StepHistoryResponse])
 async def get_steps_history(
     days: int = 7,
+    device_id: str = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Query daily step counts from InfluxDB, scoped to current user's org"""
-    # Fetch device IDs belonging to this org to scope the InfluxDB query
     org_devices = await db.execute(
         select(Device.device_id).where(Device.org_id == current_user.org_id)
     )
@@ -158,6 +158,11 @@ async def get_steps_history(
 
     if not org_device_ids:
         return []
+
+    if device_id:
+        if device_id not in org_device_ids:
+            return []
+        org_device_ids = [device_id]
 
     device_set = "[" + ", ".join([f'"{d}"' for d in org_device_ids]) + "]"
 
@@ -168,7 +173,7 @@ async def get_steps_history(
           |> range(start: -{days}d)
           |> filter(fn: (r) => r["_measurement"] == "telemetry")
           |> filter(fn: (r) => contains(value: r["device_id"], set: {device_set}))
-          |> filter(fn: (r) => r["_field"] == "walk_steps" or r["_field"] == "run_steps" or r["_field"] == "distance_m")
+          |> filter(fn: (r) => r["_field"] == "steps" or r["_field"] == "distance_m")
           |> aggregateWindow(every: 1d, fn: max, createEmpty: false)
           |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
           |> sort(columns: ["_time"], desc: true)
@@ -182,12 +187,64 @@ async def get_steps_history(
                 dt = record.get_time()
                 results.append(StepHistoryResponse(
                     date=dt.strftime("%Y-%m-%d"),
-                    walk_steps=int(record.values.get("walk_steps") or 0),
-                    run_steps=int(record.values.get("run_steps") or 0),
+                    steps=int(record.values.get("steps") or 0),
                     distance_km=round((record.values.get("distance_m") or 0) / 1000, 2)
                 ))
     except Exception as e:
         print(f"Error querying InfluxDB for steps: {e}")
+        return []
+
+    return results
+
+from app.schemas.history import TelemetryHistoryResponse
+
+@router.get("/{device_id}/telemetry", response_model=List[TelemetryHistoryResponse])
+async def get_device_telemetry(
+    device_id: str,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get raw telemetry logs for a specific device from InfluxDB"""
+    device_check = await db.execute(
+        select(Device).where(
+            Device.device_id == device_id,
+            Device.org_id == current_user.org_id
+        )
+    )
+    if not device_check.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    query = f'''
+        from(bucket: "{settings.INFLUXDB_BUCKET}")
+          |> range(start: -30d)
+          |> filter(fn: (r) => r["_measurement"] == "telemetry")
+          |> filter(fn: (r) => r["device_id"] == "{device_id}")
+          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+          |> sort(columns: ["_time"], desc: true)
+          |> limit(n: {limit})
+    '''
+
+    results = []
+    try:
+        tables = influx_manager.query_api.query(query, org=settings.INFLUXDB_ORG)
+        for table in tables:
+            for record in table.records:
+                dt = record.get_time()
+                raw_rssi = record.values.get("rssi")
+                rssi_val = int(raw_rssi) if raw_rssi is not None else None
+                results.append(TelemetryHistoryResponse(
+                    timestamp=dt,
+                    battery_pct=record.values.get("battery_pct"),
+                    steps=record.values.get("steps"),
+                    distance_m=record.values.get("distance_m"),
+                    state=record.values.get("state"),
+                    ai_pred=record.values.get("ai_pred"),
+                    ai_conf=record.values.get("ai_conf"),
+                    rssi=rssi_val
+                ))
+    except Exception as e:
+        print(f"Error querying InfluxDB for telemetry: {e}")
         return []
 
     return results
