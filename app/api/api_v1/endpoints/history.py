@@ -173,7 +173,7 @@ async def get_steps_history(
           |> range(start: -{days}d)
           |> filter(fn: (r) => r["_measurement"] == "telemetry")
           |> filter(fn: (r) => contains(value: r["device_id"], set: {device_set}))
-          |> filter(fn: (r) => r["_field"] == "steps" or r["_field"] == "distance_m")
+          |> filter(fn: (r) => r["_field"] == "steps" or r["_field"] == "walk_steps" or r["_field"] == "run_steps" or r["_field"] == "distance_m")
           |> aggregateWindow(every: 1d, fn: max, createEmpty: false)
           |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
           |> sort(columns: ["_time"], desc: true)
@@ -188,6 +188,8 @@ async def get_steps_history(
                 results.append(StepHistoryResponse(
                     date=dt.strftime("%Y-%m-%d"),
                     steps=int(record.values.get("steps") or 0),
+                    walk_steps=int(record.values.get("walk_steps") or 0),
+                    run_steps=int(record.values.get("run_steps") or 0),
                     distance_km=round((record.values.get("distance_m") or 0) / 1000, 2)
                 ))
     except Exception as e:

@@ -102,7 +102,9 @@ async def update_device(
     if "telemetry_interval" in update_data and mqtt_service.client:
         payload = json.dumps({"action": "set_interval", "val": update_data["telemetry_interval"]})
         try:
-            await mqtt_service.client.publish(f"eldercare/{device_id}/command", payload=payload, qos=1, retain=True)
+            # retain=False: command là lệnh tức thời, không nên giữ lại để device
+            # reconnect replay lệnh cũ. Interval bền vững được firmware lưu NVS.
+            await mqtt_service.client.publish(f"eldercare/{device_id}/command", payload=payload, qos=1, retain=False)
         except Exception as e:
             print(f"Failed to publish MQTT command: {e}")
     

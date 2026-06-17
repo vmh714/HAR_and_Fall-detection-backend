@@ -13,14 +13,18 @@ class StatusPayload(MQTTBase):
     battery_pct: int = Field(alias="battery")
     rssi: Optional[int] = None
     steps: int = 0
+    walk_steps: int = 0
+    run_steps: int = 0
     ai_pred: str = "UNKNOWN"
     ai_conf: float = 0.0
     interval: Optional[int] = None
 
 class AlertPayload(MQTTBase):
-    user_name: str
+    # confidence là field DUY NHẤT backend dùng (process_alert). user_name/message
+    # để optional: firmware/giả lập có thể bỏ qua mà alert "sống còn" vẫn được ghi.
     confidence: float
-    message: str
+    user_name: Optional[str] = None
+    message: Optional[str] = None
 
 class EventPayload(MQTTBase):
     event_type: str

@@ -76,7 +76,9 @@ class MQTTService:
                 
                 await db.commit()
         except Exception as e:
-            print(f"Error processing MQTT message: {e}")
+            # KHÔNG nuốt im lặng: với alert "sống còn" (QoS1) một lỗi validation =
+            # mất cảnh báo ngã. Log đủ topic + payload để truy vết / dead-letter.
+            print(f"[MQTT][DROP] topic={topic} err={e} payload={payload_str}")
 
     async def process_status(self, db, device_id, data):
         from app.db.influx_client import influx_manager, Point
@@ -96,13 +98,12 @@ class MQTTService:
             device.telemetry_interval = payload.interval
 
         # 2. Calculate Distance if wearer exists
-        # Formula: Distance = steps * L_walk
-        # Assuming step length = 0.415 * height (standard estimation)
+        # Đếm walk/run riêng (firmware D-010) → quãng đường đúng theo loại:
+        #   distance = walk_steps * 0.415*h + run_steps * 0.5*h
         distance_m = 0.0
         if device.wearer:
             height_m = device.wearer.height_cm / 100
-            l_walk = 0.415 * height_m
-            distance_m = payload.steps * l_walk
+            distance_m = (payload.walk_steps * 0.415 * height_m) + (payload.run_steps * 0.5 * height_m)
 
         # 3. Write to InfluxDB (Historical data for Charts)
         point = (
@@ -112,11 +113,17 @@ class MQTTService:
             .tag("ai_pred", payload.ai_pred)
             .field("battery_pct", float(payload.battery_pct))
             .field("steps", int(payload.steps))
+            .field("walk_steps", int(payload.walk_steps))
+            .field("run_steps", int(payload.run_steps))
             .field("ai_conf", float(payload.ai_conf))
             .field("distance_m", float(distance_m))
         )
         if device.wearer and device.current_wearer_id:
             point = point.tag("wearer_id", str(device.current_wearer_id))
+        # rssi chỉ ghi khi payload có (firmware đọc AT+CSQ — hiện chưa gửi). Khi
+        # firmware bổ sung, đường ghi này đã sẵn → Vitals chart hết rỗng.
+        if payload.rssi is not None:
+            point = point.field("rssi", int(payload.rssi))
         if payload.timestamp:
             point.time(datetime.fromtimestamp(payload.timestamp, timezone.utc))
         influx_manager.write_point(point)

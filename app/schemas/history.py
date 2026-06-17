@@ -23,6 +23,8 @@ class AlertHistory(BaseModel):
 class StepHistoryResponse(BaseModel):
     date: str
     steps: int
+    walk_steps: int = 0
+    run_steps: int = 0
     distance_km: float
 
 class TelemetryHistoryResponse(BaseModel):
