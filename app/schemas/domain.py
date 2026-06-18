@@ -33,6 +33,7 @@ class DeviceBase(BaseModel):
     firmware_version: Optional[str] = Field(None, max_length=50)
     is_active: bool = Field(True)
     telemetry_interval: int = Field(5, description="Chu kỳ gửi dữ liệu (giây)")
+    fall_threshold: float = Field(0.6, ge=0.15, le=0.95, description="Ngưỡng xác suất chốt ngã (cao = ít báo nhầm, dễ bỏ sót)")
 
 class DeviceCreate(DeviceBase):
     org_id: Optional[UUID] = Field(None, description="ID của Tổ chức (Nếu để trống sẽ lấy theo User)")
@@ -44,6 +45,11 @@ class DeviceUpdate(BaseModel):
     firmware_version: Optional[str] = Field(None, max_length=50)
     is_active: Optional[bool] = Field(None)
     telemetry_interval: Optional[int] = Field(None, description="Chu kỳ gửi dữ liệu (giây)")
+    fall_threshold: Optional[float] = Field(None, ge=0.15, le=0.95, description="Ngưỡng xác suất chốt ngã (0.15–0.95)")
+
+class DeviceCommand(BaseModel):
+    action: str = Field(..., description="start_stream | stop_stream")
+    val: Optional[int] = Field(None, description="Tham số (vd giây cho set_interval)")
 
 class DeviceResponse(DeviceBase):
     current_wearer_id: Optional[UUID]

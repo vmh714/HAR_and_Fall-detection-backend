@@ -18,6 +18,7 @@ class StatusPayload(MQTTBase):
     ai_pred: str = "UNKNOWN"
     ai_conf: float = 0.0
     interval: Optional[int] = None
+    fall_threshold: Optional[float] = None  # device echo lại ngưỡng đang áp (để FE đồng bộ)
 
 class AlertPayload(MQTTBase):
     # confidence là field DUY NHẤT backend dùng (process_alert). user_name/message

@@ -96,6 +96,8 @@ class MQTTService:
         device.last_online = datetime.fromtimestamp(payload.timestamp, timezone.utc) if payload.timestamp else datetime.now(timezone.utc)
         if payload.interval is not None and device.telemetry_interval != payload.interval:
             device.telemetry_interval = payload.interval
+        if payload.fall_threshold is not None and device.fall_threshold != payload.fall_threshold:
+            device.fall_threshold = payload.fall_threshold
 
         # 2. Calculate Distance if wearer exists
         # Đếm walk/run riêng (firmware D-010) → quãng đường đúng theo loại:

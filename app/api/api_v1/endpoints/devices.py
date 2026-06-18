@@ -8,7 +8,7 @@ from uuid import UUID
 from app.db.session import get_db
 from app.api.deps import get_current_user
 from app.models.domain import Device, Wearer, User
-from app.schemas.domain import DeviceCreate, DeviceResponse, DeviceAssign, DeviceUpdate
+from app.schemas.domain import DeviceCreate, DeviceResponse, DeviceAssign, DeviceUpdate, DeviceCommand
 from app.services.mqtt_service import mqtt_service
 import json
 
@@ -98,15 +98,22 @@ async def update_device(
         
     await db.commit()
     
-    # Publish MQTT command if telemetry_interval was updated
-    if "telemetry_interval" in update_data and mqtt_service.client:
-        payload = json.dumps({"action": "set_interval", "val": update_data["telemetry_interval"]})
-        try:
-            # retain=False: command là lệnh tức thời, không nên giữ lại để device
-            # reconnect replay lệnh cũ. Interval bền vững được firmware lưu NVS.
-            await mqtt_service.client.publish(f"eldercare/{device_id}/command", payload=payload, qos=1, retain=False)
-        except Exception as e:
-            print(f"Failed to publish MQTT command: {e}")
+    # Publish MQTT command nếu các tham số áp xuống thiết bị thay đổi.
+    # retain=False: command là lệnh tức thời, không giữ lại để device reconnect replay.
+    # Giá trị bền vững (interval, fall_threshold) được firmware lưu NVS.
+    if mqtt_service.client:
+        if "telemetry_interval" in update_data:
+            try:
+                payload = json.dumps({"action": "set_interval", "val": update_data["telemetry_interval"]})
+                await mqtt_service.client.publish(f"eldercare/{device_id}/command", payload=payload, qos=1, retain=False)
+            except Exception as e:
+                print(f"Failed to publish set_interval: {e}")
+        if "fall_threshold" in update_data:
+            try:
+                payload = json.dumps({"action": "set_fall_threshold", "val": update_data["fall_threshold"]})
+                await mqtt_service.client.publish(f"eldercare/{device_id}/command", payload=payload, qos=1, retain=False)
+            except Exception as e:
+                print(f"Failed to publish set_fall_threshold: {e}")
     
     # Re-fetch with selectinload
     result = await db.execute(
@@ -131,6 +138,41 @@ async def delete_device(
     await db.delete(db_device)
     await db.commit()
     return None
+
+ALLOWED_COMMANDS = {"start_stream", "stop_stream"}
+
+@router.post("/{device_id}/command")
+async def send_device_command(
+    device_id: str,
+    command: DeviceCommand,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Gửi lệnh điều khiển realtime xuống thiết bị qua MQTT (thay vì FE publish trực
+    tiếp). Backend kiểm tra thiết bị thuộc org của user trước khi publish."""
+    if command.action not in ALLOWED_COMMANDS:
+        raise HTTPException(status_code=422, detail=f"action phải thuộc {sorted(ALLOWED_COMMANDS)}")
+
+    result = await db.execute(
+        select(Device).where(Device.device_id == device_id, Device.org_id == current_user.org_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    if not mqtt_service.client:
+        raise HTTPException(status_code=503, detail="MQTT bridge chưa kết nối")
+
+    payload = {"action": command.action}
+    if command.val is not None:
+        payload["val"] = command.val
+    try:
+        await mqtt_service.client.publish(
+            f"eldercare/{device_id}/command", payload=json.dumps(payload), qos=1, retain=False
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Publish thất bại: {e}")
+
+    return {"ok": True, "action": command.action, "device_id": device_id}
 
 @router.post("/{device_id}/assign", response_model=DeviceResponse)
 async def assign_device(
