@@ -26,6 +26,7 @@ async def get_dashboard_telemetry(
         {
             "device_id": d.device_id,
             "battery_pct": d.battery_pct,
+            "last_rssi": d.last_rssi,
             "last_online": d.last_online,
             "is_active": d.is_active,
             "wearer_id": d.current_wearer_id

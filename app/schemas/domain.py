@@ -34,6 +34,7 @@ class DeviceBase(BaseModel):
     is_active: bool = Field(True)
     telemetry_interval: int = Field(5, description="Chu kỳ gửi dữ liệu (giây)")
     fall_threshold: float = Field(0.6, ge=0.15, le=0.95, description="Ngưỡng xác suất chốt ngã (cao = ít báo nhầm, dễ bỏ sót)")
+    fall_cooldown: int = Field(15, ge=5, le=300, description="Thời gian hồi cảnh báo ngã (giây)")
 
 class DeviceCreate(DeviceBase):
     org_id: Optional[UUID] = Field(None, description="ID của Tổ chức (Nếu để trống sẽ lấy theo User)")
@@ -46,6 +47,7 @@ class DeviceUpdate(BaseModel):
     is_active: Optional[bool] = Field(None)
     telemetry_interval: Optional[int] = Field(None, description="Chu kỳ gửi dữ liệu (giây)")
     fall_threshold: Optional[float] = Field(None, ge=0.15, le=0.95, description="Ngưỡng xác suất chốt ngã (0.15–0.95)")
+    fall_cooldown: Optional[int] = Field(None, ge=5, le=300, description="Thời gian hồi cảnh báo ngã (giây)")
 
 class DeviceCommand(BaseModel):
     action: str = Field(..., description="start_stream | stop_stream")
@@ -57,6 +59,7 @@ class DeviceResponse(DeviceBase):
     created_at: datetime
     updated_at: datetime
     battery_pct: Optional[int] = None
+    last_rssi: Optional[int] = None
     last_online: Optional[datetime] = None
     
     # Nested response for wearer details (optional)

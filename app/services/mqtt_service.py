@@ -98,6 +98,8 @@ class MQTTService:
             device.telemetry_interval = payload.interval
         if payload.fall_threshold is not None and device.fall_threshold != payload.fall_threshold:
             device.fall_threshold = payload.fall_threshold
+        if payload.rssi is not None:
+            device.last_rssi = payload.rssi
 
         # 2. Calculate Distance if wearer exists
         # Đếm walk/run riêng (firmware D-010) → quãng đường đúng theo loại:

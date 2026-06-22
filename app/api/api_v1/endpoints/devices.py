@@ -114,6 +114,12 @@ async def update_device(
                 await mqtt_service.client.publish(f"eldercare/{device_id}/command", payload=payload, qos=1, retain=False)
             except Exception as e:
                 print(f"Failed to publish set_fall_threshold: {e}")
+        if "fall_cooldown" in update_data:
+            try:
+                payload = json.dumps({"action": "set_fall_cooldown", "val": update_data["fall_cooldown"]})
+                await mqtt_service.client.publish(f"eldercare/{device_id}/command", payload=payload, qos=1, retain=False)
+            except Exception as e:
+                print(f"Failed to publish set_fall_cooldown: {e}")
     
     # Re-fetch with selectinload
     result = await db.execute(

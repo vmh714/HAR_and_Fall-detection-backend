@@ -43,8 +43,10 @@ class Device(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     telemetry_interval: Mapped[int] = mapped_column(Integer, default=5)
     fall_threshold: Mapped[float] = mapped_column(Float, default=0.6)  # ngưỡng xác suất chốt ngã (0.15–0.95)
+    fall_cooldown: Mapped[int] = mapped_column(Integer, default=15)  # thời gian hồi cảnh báo ngã (giây)
     org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     battery_pct: Mapped[Optional[int]] = mapped_column(Integer, default=100)
+    last_rssi: Mapped[Optional[int]] = mapped_column(Integer)
     last_online: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(timezone=True))
 
     # Relationships
