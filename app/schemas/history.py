@@ -13,6 +13,7 @@ class TimelineEntry(BaseModel):
 class AlertHistory(BaseModel):
     id: UUID
     device_id: str
+    wearer_id: Optional[UUID] = None
     alert_type: str
     confidence: float
     is_resolved: bool

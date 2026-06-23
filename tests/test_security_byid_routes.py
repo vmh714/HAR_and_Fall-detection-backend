@@ -75,25 +75,8 @@ async def test_create_wearer_ignores_client_org_id(client_a, seed):
     assert res.json()["org_id"] == str(seed.org_a)
 
 
-# ---------------- data-collection: auth + verify device org ----------------
-@pytest.mark.asyncio
-async def test_data_collection_requires_auth(client_anon, seed):
-    res = await client_anon.post("/api/v1/data-collection/sessions", json={
-        "device_id": seed.device_a, "label": "walking",
-        "start_timestamp": 1, "end_timestamp": 2, "sample_count": 0, "samples": [],
-    })
-    assert res.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_data_collection_cross_org_device_404(client_a, mock_influx, seed):
-    res = await client_a.post("/api/v1/data-collection/sessions", json={
-        "device_id": seed.device_b, "label": "walking",   # device org B
-        "start_timestamp": 1, "end_timestamp": 2, "sample_count": 1,
-        "samples": [{"timestamp": 1, "ax": 0, "ay": 0, "az": 1, "gx": 0, "gy": 0, "gz": 0}],
-    })
-    assert res.status_code == 404
-    mock_influx.write_api.write.assert_not_called()  # không được ghi gì
+# (Đã xoá test data-collection — endpoint /data-collection/sessions không còn;
+#  bảo mật verify recording xem tests/test_verification_api.py)
 
 
 # ---------------- no-token cho route vừa được bảo vệ ----------------

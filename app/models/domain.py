@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, UUID, ForeignKey, Float, Boolean, Enum as SQLEnum, Integer, DateTime
+from sqlalchemy import String, UUID, ForeignKey, Float, Boolean, Enum as SQLEnum, Integer, DateTime, Text, Date
 import uuid
 import enum
 import datetime
@@ -78,3 +78,32 @@ class DeviceEvent(Base):
 
     # Relationships
     device: Mapped["Device"] = relationship(back_populates="events")
+
+class VerificationSession(Base):
+    __tablename__ = "verification_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.device_id"), nullable=False, index=True)
+    wearer_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("wearers.id"), nullable=True)
+    subject_code: Mapped[str] = mapped_column(String(4), nullable=False)
+    activity_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    trial_no: Mapped[str] = mapped_column(String(3), nullable=False)
+    sample_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    duration_s: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    file_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
+
+
+class FirmwareRelease(Base):
+    __tablename__ = "firmware_releases"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    version: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    release_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    changelog: Mapped[str] = mapped_column(Text, nullable=False)
+    is_stable: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_latest: Mapped[bool] = mapped_column(Boolean, default=False)
+    bin_filename: Mapped[str] = mapped_column(String(200), nullable=False)
+    bin_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    # created_at và updated_at kế thừa từ Base

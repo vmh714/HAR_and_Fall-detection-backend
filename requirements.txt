@@ -19,10 +19,6 @@ bcrypt>=4.1.0
 # MQTT
 aiomqtt>=2.0.0
 
-# Data processing (windowing IMU ở data_collection endpoint)
-numpy>=1.26.0
-scipy>=1.11.0
-
 # Production
 gunicorn>=21.2.0
 

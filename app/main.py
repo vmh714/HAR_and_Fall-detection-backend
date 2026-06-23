@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from app.patch_loop import patch_asyncio_loop
 
@@ -38,6 +40,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+os.makedirs("static/firmware", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 from app.api.api_v1.api import api_router
 

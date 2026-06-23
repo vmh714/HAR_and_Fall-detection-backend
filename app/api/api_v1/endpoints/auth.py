@@ -10,8 +10,14 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.domain import User
 from app.schemas.user import Token
+from app.api.deps import get_current_user
 
 router = APIRouter()
+
+@router.get("/me")
+async def get_me(current_user: User = Depends(get_current_user)):
+    """Trả về thông tin user đang đăng nhập (dùng để frontend biết role)."""
+    return {"id": str(current_user.id), "username": current_user.username, "role": current_user.role}
 
 @router.post("/login", response_model=Token)
 async def login_access_token(

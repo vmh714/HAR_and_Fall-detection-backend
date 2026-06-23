@@ -74,43 +74,5 @@ async def test_device_update_not_found(client_a):
     assert res.status_code == 404
 
 
-# ==================== DATA COLLECTION ====================
-@pytest.mark.asyncio
-async def test_data_collection_session(client_a, mock_influx, seed):
-    # Endpoint hiện tại làm WINDOWING: cần >=200 mẫu, label hợp lệ (walk/run/fall/
-    # transition_*); với 'walk' nó cắt cửa sổ 200 mẫu trượt 100. Gửi 250 mẫu → 1 window.
-    samples = [
-        {"timestamp": 1713800000000 + i * 10, "ax": 0.1, "ay": 0.0, "az": 1.0, "gx": 1, "gy": 2, "gz": 3}
-        for i in range(250)
-    ]
-    payload = {
-        "device_id": seed.device_a,
-        "label": "walk",
-        "start_timestamp": samples[0]["timestamp"],
-        "end_timestamp": samples[-1]["timestamp"],
-        "sample_count": len(samples),
-        "samples": samples,
-    }
-    res = await client_a.post("/api/v1/data-collection/sessions", json=payload)
-    assert res.status_code == 201
-    body = res.json()
-    assert body["window_count"] >= 1               # đã cắt được ít nhất 1 cửa sổ
-    assert body["sample_count"] == body["window_count"] * 200  # mỗi window 200 điểm Influx
-    assert body["session_id"]
-    assert body["device_id"] == seed.device_a
-    mock_influx.write_api.write.assert_called_once()  # đã ghi InfluxDB (mock)
-
-
-@pytest.mark.asyncio
-async def test_data_collection_rejects_too_few_samples(client_a, seed):
-    # Guard: < 200 mẫu → 400 (không đủ cho 1 cửa sổ).
-    payload = {
-        "device_id": seed.device_a, "label": "walk",
-        "start_timestamp": 0, "end_timestamp": 10, "sample_count": 2,
-        "samples": [
-            {"timestamp": 0, "ax": 0.1, "ay": 0.0, "az": 1.0, "gx": 1, "gy": 2, "gz": 3},
-            {"timestamp": 10, "ax": 0.2, "ay": 0.1, "az": 1.0, "gx": 4, "gy": 5, "gz": 6},
-        ],
-    }
-    res = await client_a.post("/api/v1/data-collection/sessions", json=payload)
-    assert res.status_code == 400
+# (Đã xoá test DATA COLLECTION — endpoint /data-collection/sessions không còn,
+#  luồng thu data train→InfluxDB đã bỏ; xem tests/test_verification_api.py)

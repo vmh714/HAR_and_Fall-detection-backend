@@ -136,11 +136,14 @@ class MQTTService:
 
     async def process_alert(self, db, device_id, data):
         payload = AlertPayload(**data)
-        
-        # Get current wearer if exists
+
         result = await db.execute(select(Device).where(Device.device_id == device_id))
         device = result.scalar_one_or_none()
         wearer_id = device.current_wearer_id if device else None
+
+        if not wearer_id:
+            print(f"Skipped Fall Alert for device {device_id}: no wearer mounted")
+            return
 
         new_alert = Alert(
             device_id=device_id,
@@ -155,8 +158,7 @@ class MQTTService:
 
     async def process_event(self, db, device_id, data):
         payload = EventPayload(**data)
-        
-        # Get current wearer if exists
+
         result = await db.execute(select(Device).where(Device.device_id == device_id))
         device = result.scalar_one_or_none()
         wearer_id = device.current_wearer_id if device else None

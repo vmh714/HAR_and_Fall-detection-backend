@@ -111,7 +111,7 @@ async def seed(_setup_schema):
     """Xoá sạch + seed dữ liệu mới cho MỖI test. Trả về namespace id/token."""
     async with TestSessionLocal() as s:
         # Xoá theo thứ tự FK
-        for tbl in ["device_events", "alerts", "devices", "wearers", "users", "organizations"]:
+        for tbl in ["verification_sessions", "device_events", "alerts", "devices", "wearers", "users", "organizations"]:
             await s.execute(text(f"DELETE FROM {tbl}"))
         await s.commit()
 

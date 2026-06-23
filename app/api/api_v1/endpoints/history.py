@@ -3,31 +3,33 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, union_all, literal_column, desc
 from app.db.session import get_db
-from app.models.domain import Alert, DeviceEvent, Device, User
+from app.models.domain import Alert, DeviceEvent, Device, User, Wearer
 from app.api.deps import get_current_user
 from app.schemas.history import TimelineEntry, AlertHistory, StepHistoryResponse
 from app.db.influx_client import influx_manager
 from app.core.config import settings
-from typing import List
+from typing import List, Optional
 
 router = APIRouter()
 
 @router.get("/alerts", response_model=List[AlertHistory])
 async def get_alert_history(
-    device_id: str = None,
+    wearer_id: Optional[UUID] = None,
     limit: int = 20,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Query fall history from PostgreSQL"""
-    org_devices = await db.execute(
-        select(Device.device_id).where(Device.org_id == current_user.org_id)
+    """Query fall history from PostgreSQL, scoped by wearer"""
+    org_wearers = await db.execute(
+        select(Wearer.id).where(Wearer.org_id == current_user.org_id)
     )
-    org_device_ids = [r[0] for r in org_devices.all()]
+    org_wearer_ids = [r[0] for r in org_wearers.all()]
 
-    query = select(Alert).where(Alert.device_id.in_(org_device_ids))
-    if device_id:
-        query = query.where(Alert.device_id == device_id)
+    query = select(Alert).where(Alert.wearer_id.in_(org_wearer_ids))
+    if wearer_id:
+        if wearer_id not in org_wearer_ids:
+            raise HTTPException(status_code=403, detail="Wearer not in your organization")
+        query = query.where(Alert.wearer_id == wearer_id)
 
     query = query.order_by(desc(Alert.created_at)).limit(limit)
     result = await db.execute(query)
@@ -80,34 +82,33 @@ async def resolve_alert(
 
     return alert
 
-@router.get("/{device_id}/timeline", response_model=List[TimelineEntry])
-async def get_device_timeline(
-    device_id: str,
+@router.get("/{wearer_id}/timeline", response_model=List[TimelineEntry])
+async def get_wearer_timeline(
+    wearer_id: UUID,
     limit: int = 20,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get activity timeline by merging Alerts and DeviceEvents.
+    Get activity timeline by merging Alerts and DeviceEvents for a wearer.
     """
-    # Verify device belongs to current user's org
-    device_check = await db.execute(
-        select(Device).where(
-            Device.device_id == device_id,
-            Device.org_id == current_user.org_id
+    wearer_check = await db.execute(
+        select(Wearer).where(
+            Wearer.id == wearer_id,
+            Wearer.org_id == current_user.org_id
         )
     )
-    if not device_check.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Device not found")
+    if not wearer_check.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Wearer not found")
 
-    # Create subqueries for UNION ALL
+    # Create subqueries for UNION ALL — filter by wearer so history follows the person
     alerts_query = select(
         Alert.id,
         literal_column("'ALERT'").label("type"),
         Alert.alert_type.label("title"),
         literal_column("NULL").label("description"),
         Alert.created_at
-    ).where(Alert.device_id == device_id)
+    ).where(Alert.wearer_id == wearer_id)
 
     events_query = select(
         DeviceEvent.id,
@@ -115,7 +116,7 @@ async def get_device_timeline(
         DeviceEvent.event_type.label("title"),
         DeviceEvent.description,
         DeviceEvent.created_at
-    ).where(DeviceEvent.device_id == device_id)
+    ).where(DeviceEvent.wearer_id == wearer_id)
 
     # Combine using union_all
     union_query = union_all(alerts_query, events_query).alias("timeline")
