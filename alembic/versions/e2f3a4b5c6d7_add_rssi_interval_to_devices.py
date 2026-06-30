@@ -1,0 +1,27 @@
+"""Add rssi_interval to devices
+
+Revision ID: e2f3a4b5c6d7
+Revises: d1e2f3a4b5c6
+Create Date: 2026-06-29 00:00:00.000000
+
+Thêm cột `rssi_interval` (giây): chu kỳ đo RSSI 4G. 0 = tắt hẳn (mỗi lần đo ngắt PPP ~15-20s).
+Default 300s. Có thể cấu hình từ xa qua PUT /devices/{id} → MQTT config/set.
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+
+revision: str = 'e2f3a4b5c6d7'
+down_revision: Union[str, Sequence[str], None] = 'd1e2f3a4b5c6'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    op.add_column('devices', sa.Column('rssi_interval', sa.Integer(), server_default='300', nullable=False))
+
+
+def downgrade() -> None:
+    op.drop_column('devices', 'rssi_interval')

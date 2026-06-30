@@ -9,6 +9,7 @@ from app.schemas.history import TimelineEntry, AlertHistory, StepHistoryResponse
 from app.db.influx_client import influx_manager
 from app.core.config import settings
 from typing import List, Optional
+from collections import defaultdict
 
 router = APIRouter()
 
@@ -62,12 +63,12 @@ async def resolve_alert(
 
     # 2. Fallback: Find the latest unresolved alert (optionally filtered by device_id)
     if not alert:
-        query = select(Alert).where(
+        query = select(Alert).join(Device, Alert.device_id == Device.device_id).where(
             Alert.is_resolved == False,
-            Alert.device_id.in_(org_device_ids)
+            Device.org_id == current_user.org_id
         )
         if device_id:
-            query = query.where(Alert.device_id == device_id)
+            query = query.where((Device.device_id == device_id) | (Device.mac == device_id))
         query = query.order_by(desc(Alert.created_at)).limit(1)
 
         result = await db.execute(query)
@@ -169,6 +170,7 @@ async def get_steps_history(
 
     # Note: Using aggregateWindow with 'max' because device sends cumulative steps per day.
     # We take the max value seen each day as the daily total.
+    # Group by device_id before pivot to avoid cross-device row collisions.
     query = f'''
         from(bucket: "{settings.INFLUXDB_BUCKET}")
           |> range(start: -{days}d)
@@ -176,26 +178,42 @@ async def get_steps_history(
           |> filter(fn: (r) => contains(value: r["device_id"], set: {device_set}))
           |> filter(fn: (r) => r["_field"] == "steps" or r["_field"] == "walk_steps" or r["_field"] == "run_steps" or r["_field"] == "distance_m")
           |> aggregateWindow(every: 1d, fn: max, createEmpty: false)
+          |> group(columns: ["device_id", "_time"])
           |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-          |> sort(columns: ["_time"], desc: true)
+          |> group()
+          |> sort(columns: ["_time"], desc: false)
     '''
 
-    results = []
+    # Aggregate by date (merge multiple devices into one row per day)
+    day_agg: dict[str, dict] = {}
     try:
         tables = influx_manager.query_api.query(query, org=settings.INFLUXDB_ORG)
         for table in tables:
             for record in table.records:
                 dt = record.get_time()
-                results.append(StepHistoryResponse(
-                    date=dt.strftime("%Y-%m-%d"),
-                    steps=int(record.values.get("steps") or 0),
-                    walk_steps=int(record.values.get("walk_steps") or 0),
-                    run_steps=int(record.values.get("run_steps") or 0),
-                    distance_km=round((record.values.get("distance_m") or 0) / 1000, 2)
-                ))
+                date_str = dt.strftime("%Y-%m-%d")
+                if date_str not in day_agg:
+                    day_agg[date_str] = {"steps": 0, "walk_steps": 0, "run_steps": 0, "distance_m": 0.0}
+                agg = day_agg[date_str]
+                agg["steps"] = max(agg["steps"], int(record.values.get("steps") or 0))
+                agg["walk_steps"] = max(agg["walk_steps"], int(record.values.get("walk_steps") or 0))
+                agg["run_steps"] = max(agg["run_steps"], int(record.values.get("run_steps") or 0))
+                agg["distance_m"] = max(agg["distance_m"], float(record.values.get("distance_m") or 0))
     except Exception as e:
         print(f"Error querying InfluxDB for steps: {e}")
         return []
+
+    # Build sorted results (ascending by date)
+    results = []
+    for date_str in sorted(day_agg.keys()):
+        agg = day_agg[date_str]
+        results.append(StepHistoryResponse(
+            date=date_str,
+            steps=agg["steps"],
+            walk_steps=agg["walk_steps"],
+            run_steps=agg["run_steps"],
+            distance_km=round(agg["distance_m"] / 1000, 2)
+        ))
 
     return results
 

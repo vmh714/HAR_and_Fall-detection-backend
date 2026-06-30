@@ -148,8 +148,11 @@ async def trigger_ota_update(
             Device.org_id == current_user.org_id,
         )
     )
-    if not result.scalar_one_or_none():
+    device = result.scalar_one_or_none()
+    if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+    if not device.mac:
+        raise HTTPException(status_code=409, detail="Device chưa online (chưa có MAC) — không gửi OTA được.")
 
     # Validate version tồn tại trong DB
     ver_result = await db.execute(
@@ -163,8 +166,9 @@ async def trigger_ota_update(
 
     payload = json.dumps({"action": "ota_update", "url": body.download_url})
     try:
+        # Topic key = MAC (vân tay phần cứng)
         await mqtt_service.client.publish(
-            f"eldercare/{device_id}/command",
+            f"eldercare/{device.mac}/command",
             payload=payload,
             qos=1,
             retain=False,

@@ -10,21 +10,33 @@ from app.patch_loop import patch_asyncio_loop
 patch_asyncio_loop()
 
 from app.services.mqtt_service import mqtt_service
+from app.services.alert_maintenance import auto_resolve_stale_alerts_loop
 from app.core.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Setup MQTT connection in background
-    mqtt_task = asyncio.create_task(mqtt_service.run())
-    print("Starting up MQTT Bridge...")
+    # MQTT chạy trên THREAD RIÊNG (không phải task trên main loop) — để một lần
+    # mạng flap làm sập loop MQTT KHÔNG kéo theo HTTP server. Xem MQTTService.start().
+    mqtt_service.start()
+    print("Starting up MQTT Bridge (isolated thread)...")
+
+    # Setup auto-resolve alerts background task
+    resolve_task = asyncio.create_task(auto_resolve_stale_alerts_loop())
+    print("Starting up auto-resolve stale alerts task...")
+
     yield
-    # Teardown MQTT connection
-    mqtt_task.cancel()
+
+    # Teardown
+    mqtt_service.stop()
+    print("MQTT Bridge stopped.")
+
+    resolve_task.cancel()
     try:
-        await mqtt_task
+        await resolve_task
     except asyncio.CancelledError:
-        print("MQTT Bridge stopped.")
-    print("Shutting down MQTT Bridge...")
+        print("Auto-resolve task stopped.")
+
+    print("Shutting down background tasks...")
 
 app = FastAPI(
     title="Elderly Monitoring IoT Backend",

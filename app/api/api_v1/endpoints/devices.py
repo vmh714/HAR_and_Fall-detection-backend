@@ -98,28 +98,23 @@ async def update_device(
         
     await db.commit()
     
-    # Publish MQTT command nếu các tham số áp xuống thiết bị thay đổi.
-    # retain=False: command là lệnh tức thời, không giữ lại để device reconnect replay.
-    # Giá trị bền vững (interval, fall_threshold) được firmware lưu NVS.
-    if mqtt_service.client:
-        if "telemetry_interval" in update_data:
-            try:
-                payload = json.dumps({"action": "set_interval", "val": update_data["telemetry_interval"]})
-                await mqtt_service.client.publish(f"eldercare/{device_id}/command", payload=payload, qos=1, retain=False)
-            except Exception as e:
-                print(f"Failed to publish set_interval: {e}")
-        if "fall_threshold" in update_data:
-            try:
-                payload = json.dumps({"action": "set_fall_threshold", "val": update_data["fall_threshold"]})
-                await mqtt_service.client.publish(f"eldercare/{device_id}/command", payload=payload, qos=1, retain=False)
-            except Exception as e:
-                print(f"Failed to publish set_fall_threshold: {e}")
-        if "fall_cooldown" in update_data:
-            try:
-                payload = json.dumps({"action": "set_fall_cooldown", "val": update_data["fall_cooldown"]})
-                await mqtt_service.client.publish(f"eldercare/{device_id}/command", payload=payload, qos=1, retain=False)
-            except Exception as e:
-                print(f"Failed to publish set_fall_cooldown: {e}")
+    # Publish MQTT config/set nếu các tham số cấu hình bền vững bị thay đổi
+    # Gửi cả 5 thông số: interval, fall_threshold, fall_cooldown, fall_confirm_window, stream_timeout
+    config_keys = {"telemetry_interval", "fall_threshold", "fall_cooldown", "fall_confirm_window", "stream_timeout", "rssi_interval"}
+    # Topic key = MAC (vân tay phần cứng). device chưa online (mac=None) thì bỏ qua publish.
+    if mqtt_service.client and db_device.mac and any(k in update_data for k in config_keys):
+        try:
+            payload = json.dumps({
+                "interval": db_device.telemetry_interval,
+                "fall_threshold": db_device.fall_threshold,
+                "fall_cooldown": db_device.fall_cooldown,
+                "fall_confirm_window": db_device.fall_confirm_window,
+                "stream_timeout": db_device.stream_timeout,
+                "rssi_interval": db_device.rssi_interval
+            })
+            await mqtt_service.publish(f"eldercare/{db_device.mac}/config/set", payload=payload, qos=1, retain=False)
+        except Exception as e:
+            print(f"Failed to publish config/set: {e}")
     
     # Re-fetch with selectinload
     result = await db.execute(
@@ -162,8 +157,11 @@ async def send_device_command(
     result = await db.execute(
         select(Device).where(Device.device_id == device_id, Device.org_id == current_user.org_id)
     )
-    if not result.scalar_one_or_none():
+    device = result.scalar_one_or_none()
+    if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+    if not device.mac:
+        raise HTTPException(status_code=409, detail="Device chưa online (chưa có MAC) — không gửi lệnh được.")
 
     if not mqtt_service.client:
         raise HTTPException(status_code=503, detail="MQTT bridge chưa kết nối")
@@ -172,8 +170,9 @@ async def send_device_command(
     if command.val is not None:
         payload["val"] = command.val
     try:
-        await mqtt_service.client.publish(
-            f"eldercare/{device_id}/command", payload=json.dumps(payload), qos=1, retain=False
+        # Topic key = MAC (vân tay phần cứng)
+        await mqtt_service.publish(
+            f"eldercare/{device.mac}/command", payload=json.dumps(payload), qos=1, retain=False
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Publish thất bại: {e}")

@@ -17,8 +17,15 @@ class StatusPayload(MQTTBase):
     run_steps: int = 0
     ai_pred: str = "UNKNOWN"
     ai_conf: float = 0.0
+
+class ConfigStatusPayload(MQTTBase):
     interval: Optional[int] = None
-    fall_threshold: Optional[float] = None  # device echo lại ngưỡng đang áp (để FE đồng bộ)
+    fall_threshold: Optional[float] = None
+    fall_cooldown: Optional[int] = None
+    fall_confirm_window: Optional[int] = None
+    stream_timeout: Optional[int] = None
+    rssi_interval: Optional[int] = None
+    fw_version: Optional[str] = None  # firmware tự báo version đang chạy (lúc connect/reconnect)
 
 class AlertPayload(MQTTBase):
     # confidence là field DUY NHẤT backend dùng (process_alert). user_name/message

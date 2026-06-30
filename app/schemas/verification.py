@@ -16,6 +16,10 @@ class VerificationSessionData(BaseModel):
     samples: List[List[float]]  # [[ax,ay,az,gx,gy,gz], ...] đơn vị g và deg/s
 
 
+class VerificationSessionUpdate(BaseModel):
+    trial_no: str  # đổi tên lần thử, ví dụ "R05"
+
+
 class VerificationSessionResponse(BaseModel):
     id: UUID
     device_id: str

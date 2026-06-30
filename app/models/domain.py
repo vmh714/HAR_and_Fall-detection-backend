@@ -37,13 +37,17 @@ class Wearer(Base):
 class Device(Base):
     __tablename__ = "devices"
 
-    device_id: Mapped[str] = mapped_column(String(100), primary_key=True)  # MQTT Client ID
-    firmware_version: Mapped[Optional[str]] = mapped_column(String(50))
+    device_id: Mapped[str] = mapped_column(String(100), primary_key=True)  # id ngữ nghĩa do BE sinh: esp32_eldercare_01
+    mac: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True)  # vân tay phần cứng = khóa topic MQTT
+    firmware_version: Mapped[Optional[str]] = mapped_column(String(50))  # auto-report từ firmware (config/status)
     current_wearer_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("wearers.id"), unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     telemetry_interval: Mapped[int] = mapped_column(Integer, default=5)
-    fall_threshold: Mapped[float] = mapped_column(Float, default=0.6)  # ngưỡng xác suất chốt ngã (0.15–0.95)
+    fall_threshold: Mapped[float] = mapped_column(Float, default=0.25)  # ngưỡng xác suất chốt ngã (0.15–0.95)
     fall_cooldown: Mapped[int] = mapped_column(Integer, default=15)  # thời gian hồi cảnh báo ngã (giây)
+    fall_confirm_window: Mapped[int] = mapped_column(Integer, default=4)  # thời gian xác nhận ngã sau va chạm (giây)
+    stream_timeout: Mapped[int] = mapped_column(Integer, default=5)  # tự động tắt luồng stream (phút)
+    rssi_interval: Mapped[int] = mapped_column(Integer, default=300)  # chu kỳ đo RSSI 4G (giây); 0 = tắt
     org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     battery_pct: Mapped[Optional[int]] = mapped_column(Integer, default=100)
     last_rssi: Mapped[Optional[int]] = mapped_column(Integer)

@@ -18,6 +18,7 @@ from app.schemas.verification import (
     VerificationSessionCreate,
     VerificationSessionData,
     VerificationSessionResponse,
+    VerificationSessionUpdate,
 )
 
 router = APIRouter()
@@ -179,6 +180,101 @@ async def download_verification_file(
 
     filename = f"{session.activity_code}_{session.subject_code}_{session.trial_no}.txt"
     return FileResponse(path=session.file_path, media_type="text/plain", filename=filename)
+
+
+# ---------------------------------------------------------------------------
+# PATCH /sessions/{session_id} — đổi trial_no (rename file kèm theo)
+# ---------------------------------------------------------------------------
+
+@router.patch("/sessions/{session_id}", response_model=VerificationSessionResponse)
+async def update_verification_session(
+    session_id: UUID,
+    body: VerificationSessionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Đổi trial_no của session và rename file .txt tương ứng (cùng thư mục subject)."""
+    new_trial = body.trial_no.strip().upper()
+    if not new_trial:
+        raise HTTPException(status_code=400, detail="trial_no không được rỗng.")
+
+    result = await db.execute(
+        select(VerificationSession).where(
+            VerificationSession.id == session_id,
+            VerificationSession.org_id == current_user.org_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session không tìm thấy.")
+
+    if new_trial == session.trial_no:
+        return session
+
+    # Chống trùng: không cho 2 session cùng subject+activity+trial trong org
+    dup = await db.execute(
+        select(VerificationSession).where(
+            VerificationSession.org_id == current_user.org_id,
+            VerificationSession.subject_code == session.subject_code,
+            VerificationSession.activity_code == session.activity_code,
+            VerificationSession.trial_no == new_trial,
+            VerificationSession.id != session.id,
+        )
+    )
+    if dup.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Đã tồn tại trial {new_trial} cho {session.subject_code}/{session.activity_code}.",
+        )
+
+    # Rename file vật lý nếu đang có
+    if session.file_path and os.path.exists(session.file_path):
+        old_path = Path(session.file_path)
+        new_name = f"{session.activity_code}_{session.subject_code}_{new_trial}.txt"
+        new_path = old_path.with_name(new_name)
+        try:
+            os.replace(old_path, new_path)
+            session.file_path = str(new_path)
+        except OSError as exc:
+            logger.error("Error renaming verification file: %s", exc)
+            raise HTTPException(status_code=500, detail=f"Lỗi đổi tên file: {exc}")
+
+    session.trial_no = new_trial
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+# ---------------------------------------------------------------------------
+# DELETE /sessions/{session_id} — xóa session + file trên đĩa
+# ---------------------------------------------------------------------------
+
+@router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_verification_session(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Xóa session verification và file .txt tương ứng (nếu có)."""
+    result = await db.execute(
+        select(VerificationSession).where(
+            VerificationSession.id == session_id,
+            VerificationSession.org_id == current_user.org_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session không tìm thấy.")
+
+    if session.file_path and os.path.exists(session.file_path):
+        try:
+            os.remove(session.file_path)
+        except OSError as exc:
+            logger.warning("Could not delete file %s: %s", session.file_path, exc)
+
+    await db.delete(session)
+    await db.commit()
+    return None
 
 
 # ---------------------------------------------------------------------------
