@@ -12,6 +12,8 @@ services:
         sync: false
       - key: SECRET_KEY
         sync: false
+      - key: BACKEND_CORS_ORIGINS
+        sync: false
       - key: INFLUXDB_URL
         sync: false
       - key: INFLUXDB_TOKEN
