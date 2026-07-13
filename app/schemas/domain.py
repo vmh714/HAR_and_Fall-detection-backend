@@ -32,12 +32,12 @@ class DeviceBase(BaseModel):
     device_id: str = Field(..., max_length=100, description="MAC Address hoặc MQTT Client ID")
     firmware_version: Optional[str] = Field(None, max_length=50)
     is_active: bool = Field(True)
-    telemetry_interval: int = Field(5, description="Chu kỳ gửi dữ liệu (giây)")
+    telemetry_interval: int = Field(30, description="Chu kỳ gửi dữ liệu (giây)")
     fall_threshold: float = Field(0.25, ge=0.15, le=0.95, description="Ngưỡng xác suất chốt ngã (cao = ít báo nhầm, dễ bỏ sót)")
     fall_cooldown: int = Field(15, ge=5, le=300, description="Thời gian hồi cảnh báo ngã (giây)")
     fall_confirm_window: int = Field(4, ge=1, le=15, description="Thời gian xác nhận ngã sau va chạm (giây)")
     stream_timeout: int = Field(5, ge=1, le=60, description="Tự động tắt luồng stream sau X phút")
-    rssi_interval: int = Field(300, ge=0, le=3600, description="Chu kỳ đo RSSI 4G (giây); 0 = tắt hẳn")
+    rssi_interval: int = Field(0, ge=0, le=3600, description="Chu kỳ đo RSSI 4G (giây); 0 = tắt hẳn")
 
 class DeviceCreate(DeviceBase):
     org_id: Optional[UUID] = Field(None, description="ID của Tổ chức (Nếu để trống sẽ lấy theo User)")
